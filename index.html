@@ -571,7 +571,13 @@ const PRESETS = {
 };
 const bandaEl = [];
 let curvaAte = 0;
-const suave = (p, v) => { if (ctx) p.setTargetAtTime(v, ctx.currentTime, 0.02); };
+// com o áudio parado (iPhone antes do primeiro toque), o tempo do áudio não anda: aplica o valor na hora,
+// senão o gráfico e o som ficariam presos no valor antigo
+const suave = (p, v) => {
+  if (!ctx) return;
+  if (ctx.state === 'running') p.setTargetAtTime(v, ctx.currentTime, 0.02);
+  else { p.cancelScheduledValues(0); p.value = v; }
+};
 function preComp() {
   // baixa a entrada na mesma medida do maior reforço, para o EQ não estourar o sinal
   const m = Math.max(0, +$('grv').value, ...bandaEl.map(e => +e.value));
