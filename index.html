@@ -181,12 +181,12 @@
   </section>
 
   <section class="card yt">
-    <h2><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="M10 9l5 3-5 3z" fill="currentColor"/></svg>YouTube</h2>
-    <p id="ytmsg">Abra o vídeo em outra aba, clique em Capturar, escolha <b>Guia do Chrome</b>, selecione a aba do vídeo e marque <b>Compartilhar áudio da guia</b>.</p>
+    <h2><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="4"/><path d="M10 9l5 3-5 3z" fill="currentColor"/></svg>YouTube e Spotify</h2>
+    <p id="ytmsg">Toque o vídeo ou a música em outra aba (YouTube ou open.spotify.com), clique em Capturar, escolha <b>Guia do Chrome</b>, selecione essa aba e marque <b>Compartilhar áudio da guia</b>.</p>
     <div class="linha">
-      <button class="btn pri" id="yt">Capturar aba do YouTube</button>
-      <a class="btn" id="fav" title="Arraste para a barra de favoritos">🔊 Amplificar YouTube</a>
-      <small style="color:var(--mut)">← arraste este para a barra de favoritos e clique nele com o vídeo aberto</small>
+      <button class="btn pri" id="yt">Capturar aba (YouTube, Spotify…)</button>
+      <a class="btn" id="fav" title="Arraste para a barra de favoritos (só YouTube)">🔊 Amplificar YouTube</a>
+      <small style="color:var(--mut)">← só YouTube: arraste para a barra de favoritos e clique nele com o vídeo aberto</small>
     </div>
   </section>
 
@@ -382,7 +382,7 @@ let captura, fonteCaptura;
 function pararCaptura() {
   if (fonteCaptura) { fonteCaptura.disconnect(); fonteCaptura = null; }
   if (captura) { captura.getTracks().forEach(t => t.stop()); captura = null; }
-  $('yt').textContent = 'Capturar aba do YouTube';
+  $('yt').textContent = 'Capturar aba (YouTube, Spotify…)';
 }
 $('yt').addEventListener('click', async () => {
   if (captura) { pararCaptura(); $('ytmsg').textContent = 'Captura encerrada.'; return; }
@@ -403,7 +403,7 @@ $('yt').addEventListener('click', async () => {
     fonteCaptura.connect(entrada);
     s.getAudioTracks()[0].addEventListener('ended', () => { pararCaptura(); $('ytmsg').textContent = 'Captura encerrada.'; });
     $('yt').textContent = 'Parar captura';
-    $('ytmsg').textContent = 'Capturando o YouTube. O som da aba agora passa pelo amplificador.';
+    $('ytmsg').textContent = 'Capturando a aba. O som da aba agora passa pelo amplificador.';
   } catch (e) {
     $('ytmsg').textContent = 'Captura cancelada ou bloqueada pelo navegador.';
   }
