@@ -59,6 +59,20 @@
   .presets button.on { background:linear-gradient(135deg,var(--a1),var(--a2)); color:#fff; border-color:transparent; font-weight:700; box-shadow:0 6px 16px rgba(91,71,245,.35); }
 
   .duo { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .fontes h2 { margin:0 0 14px; font-size:18px; }
+  .apps { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .app { display:flex; flex-direction:column; align-items:flex-start; gap:10px; padding:16px; border-radius:18px; border:1px solid var(--line); background:var(--soft); text-align:left; -webkit-tap-highlight-color:transparent; }
+  .app:active { transform:scale(.98); }
+  .app.on { border-color:var(--c); box-shadow:0 0 0 2px var(--c) inset; }
+  .app .lg { width:48px; height:48px; border-radius:14px; display:grid; place-items:center; background:var(--c); color:#fff; }
+  .app .lg svg { width:26px; height:26px; fill:currentColor; }
+  .app b { font-size:17px; }
+  .app small { color:var(--mut); font-size:13px; }
+  .app.youtube { --c:#e5322d; } .app.spotify { --c:#1aa34a; }
+  #passo { display:none; margin-top:14px; padding:14px 16px; border-radius:14px; background:var(--soft); font-size:14px; }
+  #passo.on { display:block; }
+  #passo a:not(.btn) { color:var(--a1); font-weight:600; }
+  #passo p { margin:0 0 10px; } #passo p:last-child { margin:0; }
   .acao { display:flex; align-items:center; gap:14px; padding:16px; margin:0 0 14px; cursor:pointer; width:100%; text-align:left; }
   .acao:hover { border-color:var(--a1); }
   .tile { width:48px; height:48px; border-radius:12px; background:var(--soft); color:var(--a1); display:grid; place-items:center; flex:none; }
@@ -170,6 +184,21 @@
     <div class="presets" id="presets">
       <button data-v="100">100%</button><button data-v="103">103%</button><button data-v="150">150%</button><button data-v="200">200%</button><button data-v="300">300%</button>
     </div>
+  </section>
+
+  <section class="card fontes">
+    <h2>Ouvir no YouTube ou Spotify</h2>
+    <div class="apps">
+      <button class="app youtube" id="irYT" type="button">
+        <span class="lg"><svg viewBox="0 0 24 24"><path d="M9 7.5v9l7.5-4.5z"/></svg></span>
+        <b>YouTube</b><small>Abrir e amplificar</small>
+      </button>
+      <button class="app spotify" id="irSP" type="button">
+        <span class="lg"><svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6.5" cy="18" r="2.6"/><circle cx="16.5" cy="16" r="2.6"/></svg></span>
+        <b>Spotify</b><small>Abrir e amplificar</small>
+      </button>
+    </div>
+    <div id="passo" role="status"></div>
   </section>
 
   <div class="duo">
@@ -495,6 +524,33 @@ $('copiar').addEventListener('click', async () => {
   setTimeout(() => { $('copiar').textContent = 'Copiar código'; }, 2500);
 });
 $('fav').addEventListener('click', e => { e.preventDefault(); alert('Não clique aqui: arraste este botão para a barra de favoritos (Ctrl+Shift+B mostra a barra).'); });
+
+/* ---------- atalhos YouTube / Spotify ---------- */
+const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function ir(qual) {
+  const yt = qual === 'yt', nome = yt ? 'YouTube' : 'Spotify';
+  $('irYT').classList.toggle('on', yt); $('irSP').classList.toggle('on', !yt);
+  const ps = $('passo'); ps.className = 'on';
+  if (IOS && !yt) {
+    ps.innerHTML = '<p><b>No iPhone o Spotify não deixa amplificar.</b> O som dele é protegido e nenhuma página consegue aumentar. Você pode ouvir no app do Spotify no volume normal.</p>' +
+      '<p>Para som mais alto no iPhone, use o <b>YouTube</b> ou escolha uma música salva no aparelho em <b>Escolher música</b>.</p>' +
+      '<div class="linha"><a class="btn" href="https://open.spotify.com/" target="_blank" rel="noopener">Abrir Spotify mesmo assim</a></div>';
+    return;
+  }
+  window.open(yt ? (IOS ? 'https://m.youtube.com/' : 'https://www.youtube.com/') : 'https://open.spotify.com/', '_blank', 'noopener');
+  if (IOS) {
+    ps.innerHTML = '<p>O YouTube abriu numa aba nova do Safari. Lá: dê play no vídeo, toque na barra de endereço, digite <b>Amplificar</b> e toque no favorito.</p>' +
+      '<p>Ainda não criou o favorito <b>Amplificar</b>? <a href="#" id="verfav">Veja como criar</a> (leva 1 minuto).</p>';
+    $('verfav').onclick = e => { e.preventDefault(); document.querySelector('.ios').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  } else {
+    ps.innerHTML = '<p>O ' + nome + ' abriu numa aba nova. Dê play, volte para esta aba e toque em <b>Capturar</b>. Na janela, escolha a aba do ' + nome + ' e marque <b>Compartilhar áudio da guia</b>.</p>' +
+      '<div class="linha"><button class="btn pri" id="capt2" type="button">Capturar</button></div>';
+    $('capt2').onclick = () => $('yt').click();
+  }
+}
+if (IOS) $('irSP').querySelector('small').textContent = 'Só ouvir, sem amplificar';
+$('irYT').addEventListener('click', () => ir('yt'));
+$('irSP').addEventListener('click', () => ir('sp'));
 
 $('lim').addEventListener('click', () => {
   protecao = !protecao;
