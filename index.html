@@ -96,7 +96,24 @@
   #barras { width:100%; height:64px; display:block; margin:16px 0 10px; border-radius:14px; background:var(--soft); }
   .nivel .dica { text-align:center; color:var(--mut); font-size:14px; margin:0 0 12px; }
 
+  .eq h2, .trat h2 { margin:0; font-size:18px; display:flex; align-items:center; gap:10px; }
+  .eq h2 svg, .trat h2 svg { color:var(--a1); }
+  #eqcv { width:100%; height:180px; display:block; margin:14px 0 6px; border-radius:14px; background:var(--soft); }
+  .bandas { display:grid; grid-template-columns:repeat(10,1fr); margin-top:8px; }
+  .banda { display:flex; flex-direction:column; align-items:center; gap:4px; font-size:12px; color:var(--mut); font-variant-numeric:tabular-nums; }
+  .banda output { color:var(--tx); }
+  .banda input { -webkit-appearance:auto; appearance:auto; background:none; writing-mode:vertical-lr; direction:rtl; accent-color:var(--a1); width:24px; height:130px; flex:none; }
+  .banda input::-webkit-slider-thumb { -webkit-appearance:auto; appearance:auto; width:auto; height:auto; border:0; box-shadow:none; }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+  .chips button { padding:8px 14px; border-radius:99px; border:1px solid var(--line); background:var(--card); font-size:14px; }
+  .chips button:hover { border-color:var(--a1); }
+  .chips button.on { background:linear-gradient(135deg,var(--a1),var(--a2)); color:#fff; border-color:transparent; font-weight:600; }
+  .ctl { display:grid; grid-template-columns:170px 1fr 84px; align-items:center; gap:12px; margin-top:16px; font-size:14px; }
+  .ctl output { text-align:right; color:var(--mut); font-variant-numeric:tabular-nums; }
+
   @media (max-width:640px) {
+    .ctl { grid-template-columns:1fr 84px; gap:6px 12px; } .ctl label { grid-column:1/-1; }
+    .banda { font-size:10px; } .banda input { height:110px; }
     .duo { grid-template-columns:1fr; gap:0; }
     .presets { gap:6px; } .presets button { font-size:13px; padding:10px 2px; }
     header h1 { font-size:21px; } .logo { width:52px; height:52px; }
@@ -173,6 +190,26 @@
     </div>
   </section>
 
+  <section class="card eq">
+    <div class="linha">
+      <h2><svg class="ic" viewBox="0 0 24 24"><path d="M5 3v18M12 3v18M19 3v18"/><circle cx="5" cy="15" r="2.2" fill="currentColor"/><circle cx="12" cy="8" r="2.2" fill="currentColor"/><circle cx="19" cy="13" r="2.2" fill="currentColor"/></svg>Equalizador de 10 bandas</h2>
+      <span style="flex:1"></span>
+      <button class="btn" id="eqzero">Zerar</button>
+    </div>
+    <canvas id="eqcv" aria-hidden="true"></canvas>
+    <div class="bandas" id="bandas"></div>
+    <div class="chips" id="chips"></div>
+  </section>
+
+  <section class="card trat">
+    <h2><svg class="ic" viewBox="0 0 24 24"><path d="M3 12c2-6 4-6 6 0s4 6 6 0 4-6 6 0"/></svg>Tratamento de som</h2>
+    <div class="ctl"><label for="hpf">Corte de subgrave</label><input id="hpf" type="range" min="20" max="200" step="5" value="20"><output id="hpfv"></output></div>
+    <div class="ctl"><label for="grv">Reforço de graves</label><input id="grv" type="range" min="0" max="12" step="0.5" value="0"><output id="grvv"></output></div>
+    <div class="ctl"><label for="cmp">Compressor (nivela o volume)</label><input id="cmp" type="range" min="0" max="100" step="1" value="0"><output id="cmpv"></output></div>
+    <div class="ctl"><label for="lrg">Largura estéreo</label><input id="lrg" type="range" min="0" max="200" step="5" value="100"><output id="lrgv"></output></div>
+    <div class="ctl"><label for="bal">Balanço esquerda/direita</label><input id="bal" type="range" min="-100" max="100" step="5" value="0"><output id="balv"></output></div>
+  </section>
+
   <section class="card nivel">
     <div class="topo">
       <h2><svg class="ic" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>Nível de saída</h2>
@@ -191,6 +228,8 @@
 const $ = id => document.getElementById(id);
 const MIN = 100, MAX = 300;
 let ctx, ganho, limitador, analisador, fonte, osc, protecao = true, buf = null, pico = 0;
+let entrada, hpf, eq = [], graves, comp, mLL, mLR, mRL, mRR, pan, espec = null;
+const FREQS = [31.25, 62.5, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 
 /* ---------- tema ---------- */
 (function () {
@@ -210,13 +249,42 @@ function montar() {
   if (ctx) return;
   ctx = new (window.AudioContext || window.webkitAudioContext)();
   ganho = ctx.createGain();
+  // cadeia de tratamento: entrada -> corte -> EQ 10 bandas -> graves -> compressor -> largura -> balanço -> ganho
+  entrada = ctx.createGain();
+  hpf = ctx.createBiquadFilter(); hpf.type = 'highpass'; hpf.frequency.value = 20; hpf.Q.value = 0.707;
+  entrada.connect(hpf);
+  let no = hpf;
+  FREQS.forEach((f, i) => {
+    const b = ctx.createBiquadFilter();
+    b.type = i === 0 ? 'lowshelf' : i === FREQS.length - 1 ? 'highshelf' : 'peaking';
+    b.frequency.value = f; b.Q.value = 1.41; b.gain.value = 0;
+    no.connect(b); no = b; eq.push(b);
+  });
+  graves = ctx.createBiquadFilter(); graves.type = 'lowshelf'; graves.frequency.value = 90; graves.gain.value = 0;
+  no.connect(graves);
+  comp = ctx.createDynamicsCompressor();
+  comp.threshold.value = 0; comp.ratio.value = 1; comp.knee.value = 12; comp.attack.value = 0.01; comp.release.value = 0.2;
+  graves.connect(comp);
+  const est = ctx.createGain(); est.channelCount = 2; est.channelCountMode = 'explicit'; est.channelInterpretation = 'speakers';
+  comp.connect(est);
+  const sep = ctx.createChannelSplitter(2), jun = ctx.createChannelMerger(2);
+  est.connect(sep);
+  mLL = ctx.createGain(); mLR = ctx.createGain(); mRL = ctx.createGain(); mRR = ctx.createGain();
+  mLR.gain.value = 0; mRL.gain.value = 0;
+  sep.connect(mLL, 0); mLL.connect(jun, 0, 0);
+  sep.connect(mRL, 1); mRL.connect(jun, 0, 0);
+  sep.connect(mLR, 0); mLR.connect(jun, 0, 1);
+  sep.connect(mRR, 1); mRR.connect(jun, 0, 1);
+  pan = ctx.createStereoPanner();
+  jun.connect(pan); pan.connect(ganho);
   limitador = ctx.createDynamicsCompressor();
   limitador.threshold.value = -3; limitador.knee.value = 0; limitador.ratio.value = 20;
   limitador.attack.value = 0.002; limitador.release.value = 0.1;
   analisador = ctx.createAnalyser(); analisador.fftSize = 2048;
   buf = new Float32Array(analisador.fftSize);
+  espec = new Uint8Array(analisador.frequencyBinCount);
   fonte = ctx.createMediaElementSource($('player'));
-  fonte.connect(ganho);
+  fonte.connect(entrada);
   ligar();
   ganho.gain.value = +$('ganho').value / 100;
 }
@@ -304,7 +372,7 @@ $('tom').addEventListener('click', () => {
   P.pause();
   osc = ctx.createOscillator(); osc.frequency.value = 440;
   const base = ctx.createGain(); base.gain.value = 0.3;
-  osc.connect(base); base.connect(ganho); osc.start();
+  osc.connect(base); base.connect(entrada); osc.start();
   $('tom').classList.add('on'); $('tomic').firstElementChild.setAttribute('d', PAUSE);
   $('tomtx').textContent = 'Tocando 440 Hz. Clique para parar.';
 });
@@ -332,7 +400,7 @@ $('yt').addEventListener('click', async () => {
     pararTom(); P.pause();
     captura = s;
     fonteCaptura = ctx.createMediaStreamSource(s);
-    fonteCaptura.connect(ganho);
+    fonteCaptura.connect(entrada);
     s.getAudioTracks()[0].addEventListener('ended', () => { pararCaptura(); $('ytmsg').textContent = 'Captura encerrada.'; });
     $('yt').textContent = 'Parar captura';
     $('ytmsg').textContent = 'Capturando o YouTube. O som da aba agora passa pelo amplificador.';
@@ -349,6 +417,125 @@ $('lim').addEventListener('click', () => {
   $('lim').textContent = 'Proteção contra estouro: ' + (protecao ? 'LIGADA' : 'DESLIGADA');
   if (ctx) ligar();
 });
+
+/* ---------- equalizador e tratamento de som ---------- */
+const PRESETS = {
+  'Plano':         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  'Graves':        [6, 5, 4, 2, 0, 0, 0, 0, 0, 0],
+  'Voz':           [-4, -3, -1, 1, 2, 4, 4, 3, 1, 0],
+  'Agudos':        [0, 0, 0, 0, 0, 1, 2, 4, 5, 6],
+  'Caixa pequena': [-6, -2, 3, 4, 1, 0, 1, 2, 3, 2],
+  'Rock':          [4, 3, 1, -1, -2, 0, 2, 3, 4, 4],
+  'Noite':         [-3, -2, 0, 0, 1, 2, 2, 1, 0, -1]
+};
+const bandaEl = [];
+let curvaAte = 0;
+const suave = (p, v) => { if (ctx) p.setTargetAtTime(v, ctx.currentTime, 0.02); };
+function preComp() {
+  // baixa a entrada na mesma medida do maior reforço, para o EQ não estourar o sinal
+  const m = Math.max(0, +$('grv').value, ...bandaEl.map(e => +e.value));
+  if (entrada) suave(entrada.gain, Math.pow(10, -m / 20));
+  curvaAte = performance.now() + 400;
+}
+function banda(i, v, marca) {
+  bandaEl[i].value = v;
+  bandaEl[i].previousElementSibling.textContent = (v > 0 ? '+' : '') + (+v).toFixed(v % 1 ? 1 : 0);
+  if (eq[i]) suave(eq[i].gain, +v);
+  if (!marca) document.querySelectorAll('#chips button').forEach(b => b.classList.remove('on'));
+}
+function preset(nome) {
+  PRESETS[nome].forEach((v, i) => banda(i, v, true));
+  document.querySelectorAll('#chips button').forEach(b => b.classList.toggle('on', b.textContent === nome));
+  if (nome === 'Noite') ajusta('cmp', 60);
+  preComp();
+}
+const CTL = {
+  hpf: v => { if (hpf) suave(hpf.frequency, v); return v <= 20 ? 'Desligado' : v + ' Hz'; },
+  grv: v => { if (graves) suave(graves.gain, v); preComp(); return v ? '+' + v + ' dB' : 'Desligado'; },
+  cmp: v => { const i = v / 100; if (comp) { suave(comp.threshold, -36 * i); suave(comp.ratio, 1 + 7 * i); } return v ? v + '%' : 'Desligado'; },
+  lrg: v => { const w = v / 100, a = (1 + w) / 2, b = (1 - w) / 2; if (mLL) { suave(mLL.gain, a); suave(mRR.gain, a); suave(mLR.gain, b); suave(mRL.gain, b); } return v === 0 ? 'Mono' : v === 100 ? 'Normal' : v + '%'; },
+  bal: v => { if (pan) suave(pan.pan, v / 100); return v === 0 ? 'Centro' : (v < 0 ? 'Esq. ' : 'Dir. ') + Math.abs(v) + '%'; }
+};
+function ajusta(id, v) {
+  const e = $(id);
+  if (v !== undefined) e.value = v;
+  e.style.setProperty('--p', ((e.value - e.min) / (e.max - e.min) * 100) + '%');
+  $(id + 'v').textContent = CTL[id](+e.value);
+  curvaAte = performance.now() + 400;
+}
+function eqInicia() {
+  FREQS.forEach((f, i) => {
+    const d = document.createElement('div'); d.className = 'banda';
+    const o = document.createElement('output'); o.textContent = '0';
+    const e = document.createElement('input');
+    e.type = 'range'; e.min = -12; e.max = 12; e.step = 0.5; e.value = 0;
+    const nome = f >= 1000 ? (f / 1000) + 'k' : Math.round(f);
+    e.setAttribute('aria-label', 'Banda ' + nome + ' Hz');
+    e.addEventListener('input', () => { banda(i, +e.value); preComp(); });
+    const s = document.createElement('span'); s.textContent = nome;
+    d.append(o, e, s); $('bandas').append(d); bandaEl.push(e);
+  });
+  Object.keys(PRESETS).forEach(nome => {
+    const b = document.createElement('button'); b.textContent = nome;
+    b.addEventListener('click', () => preset(nome));
+    $('chips').append(b);
+  });
+  $('eqzero').addEventListener('click', () => { preset('Plano'); ajusta('hpf', 20); ajusta('grv', 0); ajusta('cmp', 0); ajusta('lrg', 100); ajusta('bal', 0); });
+  Object.keys(CTL).forEach(id => { $(id).addEventListener('input', () => ajusta(id)); ajusta(id); });
+  preset('Plano');
+}
+
+// curva de resposta (soma de todos os filtros) + espectro em tempo real
+const cvE = $('eqcv'), cE = cvE.getContext('2d');
+const NP = 240, F0 = FREQS[0] / Math.SQRT2, OIT = FREQS.length;       // eixo alinhado com as 10 bandas
+const fx = new Float32Array(NP), curva = new Float32Array(NP), mg = new Float32Array(NP), fs = new Float32Array(NP);
+for (let i = 0; i < NP; i++) fx[i] = F0 * Math.pow(2, i / (NP - 1) * OIT);
+function curvaCalc() {
+  curva.fill(0);
+  if (!hpf) return;
+  [hpf, graves, ...eq].forEach(b => {
+    b.getFrequencyResponse(fx, mg, fs);
+    for (let i = 0; i < NP; i++) curva[i] += 20 * Math.log10(Math.max(mg[i], 1e-4));
+  });
+}
+function eqDesenha(k, cor) {
+  const W = cvE.width, H = cvE.height, DB = 18;
+  if (performance.now() < curvaAte + 50) curvaCalc();
+  cE.clearRect(0, 0, W, H);
+  const yd = d => H / 2 - Math.max(-DB, Math.min(DB, d)) / DB * (H / 2 - 10 * k);
+  // grade
+  cE.lineWidth = k; cE.strokeStyle = 'rgba(' + cor + ',0.13)';
+  cE.beginPath();
+  for (let i = 0; i < OIT; i++) { const x = (i + 0.5) / OIT * W; cE.moveTo(x, 0); cE.lineTo(x, H); }
+  [-12, -6, 6, 12].forEach(d => { cE.moveTo(0, yd(d)); cE.lineTo(W, yd(d)); });
+  cE.stroke();
+  cE.strokeStyle = 'rgba(' + cor + ',0.35)'; cE.beginPath(); cE.moveTo(0, yd(0)); cE.lineTo(W, yd(0)); cE.stroke();
+  // espectro
+  if (espec && ctx) {
+    analisador.getByteFrequencyData(espec);
+    const NB = 80, lw = W / NB, ny = ctx.sampleRate / 2;
+    for (let i = 0; i < NB; i++) {
+      const f = F0 * Math.pow(2, (i + 0.5) / NB * OIT);
+      const v = espec[Math.min(espec.length - 1, Math.round(f / ny * espec.length))] / 255;
+      if (v <= 0) continue;
+      const h = v * (H - 8 * k);
+      cE.fillStyle = 'rgba(' + cor + ',' + (0.12 + 0.3 * v).toFixed(3) + ')';
+      cE.fillRect(i * lw + lw * 0.15, H - h, lw * 0.7, h);
+    }
+  }
+  // curva
+  cE.beginPath();
+  for (let i = 0; i < NP; i++) { const x = i / (NP - 1) * W, y = yd(curva[i]); i ? cE.lineTo(x, y) : cE.moveTo(x, y); }
+  cE.strokeStyle = 'rgb(' + cor + ')'; cE.lineWidth = 2.6 * k; cE.lineJoin = 'round'; cE.stroke();
+  cE.lineTo(W, yd(0)); cE.lineTo(0, yd(0)); cE.closePath();
+  cE.fillStyle = 'rgba(' + cor + ',0.14)'; cE.fill();
+  // pontos das bandas
+  bandaEl.forEach((e, i) => {
+    const x = (i + 0.5) / OIT * W, y = yd(curva[Math.round((i + 0.5) / OIT * (NP - 1))]);
+    cE.beginPath(); cE.arc(x, y, 4.5 * k, 0, 7); cE.fillStyle = '#fff'; cE.fill();
+    cE.lineWidth = 2 * k; cE.strokeStyle = 'rgb(' + cor + ')'; cE.stroke();
+  });
+}
 
 /* ---------- computação gráfica: ondas 3D + barras 3D, render até 4K ---------- */
 const cvO = $('ondas'), cO = cvO.getContext('2d');
@@ -443,10 +630,13 @@ function laco(ms) {
   const cor = getComputedStyle(document.documentElement).getPropertyValue('--wave').trim();
   ondas(t, escala(cvO), cor);
   barras(escala(cvB), cor);
+  eqDesenha(escala(cvE), cor);
   if (quadro++ % 6 === 0) estado();
   requestAnimationFrame(laco);
 }
 
+try { montar(); } catch (e) {}
+eqInicia();
 aplicar(100);
 requestAnimationFrame(laco);
 </script>
