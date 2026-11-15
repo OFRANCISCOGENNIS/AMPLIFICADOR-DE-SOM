@@ -81,6 +81,11 @@
   .yt h2, .nivel h2 { margin:0; font-size:18px; display:flex; align-items:center; gap:10px; }
   .yt h2 svg, .nivel h2 svg { color:var(--a1); }
   .yt p { color:var(--mut); font-size:14px; margin:8px 0 12px; }
+  .yt .ios { margin-top:18px; padding-top:16px; border-top:1px solid var(--line); }
+  .yt h3 { margin:0; font-size:16px; }
+  .yt ol { margin:0 0 14px; padding-left:22px; font-size:14px; }
+  .yt ol li { margin:5px 0; }
+  .yt .obs { font-size:13px; margin:12px 0 0; }
   .btn { display:inline-block; padding:11px 18px; border-radius:12px; border:1px solid var(--line); background:var(--card); text-decoration:none; color:var(--tx); font-size:15px; }
   .btn:hover { border-color:var(--a1); }
   .btn.on, .btn.pri { background:linear-gradient(135deg,var(--a1),var(--a2)); color:#fff; border-color:transparent; font-weight:600; }
@@ -187,6 +192,21 @@
       <button class="btn pri" id="yt">Capturar aba (YouTube, Spotify…)</button>
       <a class="btn" id="fav" title="Arraste para a barra de favoritos (só YouTube)">🔊 Amplificar YouTube</a>
       <small style="color:var(--mut)">← só YouTube: arraste para a barra de favoritos e clique nele com o vídeo aberto</small>
+    </div>
+    <div class="ios">
+      <h3>No iPhone (Safari)</h3>
+      <p>O iPhone não deixa uma página pegar o som de outra aba. Por isso o amplificador vai até o YouTube: um favorito especial abre um painel de volume em cima do vídeo, com até 300%.</p>
+      <ol>
+        <li>Toque em <b>Copiar código</b> aqui embaixo.</li>
+        <li>No Safari, toque em <b>Compartilhar</b> → <b>Adicionar Favorito</b>, mude o nome para <b>Amplificar</b> e salve.</li>
+        <li>Abra os <b>Favoritos</b> (ícone de livro) → <b>Editar</b> → toque em <b>Amplificar</b>, apague o endereço, <b>cole o código</b> e toque em OK.</li>
+        <li>Abra o vídeo no <b>YouTube pelo Safari</b> (não no app), dê play, toque na barra de endereço, digite <b>Amplificar</b> e toque no favorito que aparece.</li>
+      </ol>
+      <div class="linha">
+        <button class="btn pri" id="copiar">Copiar código</button>
+        <a class="btn" href="https://m.youtube.com/" target="_blank" rel="noopener">Abrir YouTube</a>
+      </div>
+      <p class="obs" id="copiartx">Se o vídeo ficar mudo depois de tocar no favorito, recarregue a página do YouTube: essa versão do iPhone não deixa amplificar.</p>
     </div>
   </section>
 
@@ -408,7 +428,63 @@ $('yt').addEventListener('click', async () => {
     $('ytmsg').textContent = 'Captura cancelada ou bloqueada pelo navegador.';
   }
 });
-$('fav').href = "javascript:(()=>{const v=document.querySelector('video');if(!v)return alert('Abra um vídeo primeiro.');let b=window.__amp;if(!b||b.v!==v){const c=new AudioContext(),g=c.createGain(),l=c.createDynamicsCompressor();l.threshold.value=-3;l.knee.value=0;l.ratio.value=20;c.createMediaElementSource(v).connect(g);g.connect(l);l.connect(c.destination);b=window.__amp={c,g,v}}b.c.resume();const p=prompt('Volume em % (100 a 300):',Math.round(b.g.gain.value*100));if(p&&!isNaN(+p))b.g.gain.value=Math.min(300,Math.max(0,+p))/100})();";
+/* favorito "Amplificar": roda dentro da página do YouTube e mostra um painel de volume (100% a 300%) */
+function ampYT() {
+  var v = document.querySelector('video');
+  if (!v) { alert('Abra um vídeo do YouTube primeiro.'); return; }
+  var A = window.__amp;
+  if (!A || A.v !== v) {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    var c = A && A.c || new AC();
+    var g = c.createGain(), l = c.createDynamicsCompressor();
+    l.threshold.value = -3; l.knee.value = 0; l.ratio.value = 20; l.attack.value = 0.002; l.release.value = 0.1;
+    c.createMediaElementSource(v).connect(g); g.connect(l); l.connect(c.destination);
+    A = window.__amp = { c: c, g: g, v: v };
+  }
+  A.c.resume();
+  var old = document.getElementById('__ampP'); if (old) old.remove();
+  var p = document.createElement('div'); p.id = '__ampP';
+  p.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2147483647;width:min(360px,calc(100vw - 32px));' +
+    'background:#181527;color:#f2effc;border-radius:18px;padding:14px 16px;box-shadow:0 10px 30px rgba(0,0,0,.45);font:15px/1.3 -apple-system,system-ui,sans-serif';
+  p.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><b style="flex:1">🔊 Amplificador</b>' +
+    '<span id="__ampN" style="font-size:22px;font-weight:800"></span>' +
+    '<button id="__ampX" aria-label="Fechar" style="border:0;background:#2a2540;color:#fff;width:32px;height:32px;border-radius:50%;font-size:16px">✕</button></div>' +
+    '<input id="__ampR" type="range" min="100" max="300" step="5" style="width:100%;margin:12px 0;accent-color:#7a69ff">' +
+    '<div id="__ampB" style="display:flex;gap:6px"></div>';
+  document.body.appendChild(p);
+  var r = p.querySelector('#__ampR'), n = p.querySelector('#__ampN');
+  function set(x) {
+    x = Math.max(100, Math.min(300, +x)); r.value = x; n.textContent = x + '%';
+    A.g.gain.value = x / 100; A.c.resume();
+    try { localStorage.setItem('__ampV', x); } catch (e) {}
+  }
+  [100, 150, 200, 250, 300].forEach(function (x) {
+    var b = document.createElement('button'); b.textContent = x + '%';
+    b.style.cssText = 'flex:1;border:0;border-radius:10px;padding:9px 0;background:#2a2540;color:#fff;font:inherit;font-size:13px';
+    b.onclick = function () { set(x); };
+    p.querySelector('#__ampB').appendChild(b);
+  });
+  r.oninput = function () { set(r.value); };
+  p.querySelector('#__ampX').onclick = function () { p.remove(); };
+  var s = A.g.gain.value > 1 ? Math.round(A.g.gain.value * 100) : 200;
+  try { s = +localStorage.getItem('__ampV') || s; } catch (e) {}
+  set(s);
+}
+const AMP_URL = 'javascript:' + encodeURIComponent('(' + ampYT.toString() + ')()');
+$('fav').href = AMP_URL;
+$('copiar').addEventListener('click', async () => {
+  let ok = false;
+  try { await navigator.clipboard.writeText(AMP_URL); ok = true; } catch (e) {}
+  if (!ok) {
+    const t = document.createElement('textarea'); t.value = AMP_URL; t.setAttribute('readonly', '');
+    t.style.cssText = 'position:fixed;top:0;opacity:0'; document.body.append(t);
+    t.select(); t.setSelectionRange(0, t.value.length);
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    t.remove();
+  }
+  $('copiar').textContent = ok ? 'Copiado ✓' : 'Não deu para copiar';
+  setTimeout(() => { $('copiar').textContent = 'Copiar código'; }, 2500);
+});
 $('fav').addEventListener('click', e => { e.preventDefault(); alert('Não clique aqui: arraste este botão para a barra de favoritos (Ctrl+Shift+B mostra a barra).'); });
 
 $('lim').addEventListener('click', () => {
