@@ -113,11 +113,20 @@
   .chips button { padding:8px 14px; border-radius:99px; border:1px solid var(--line); background:var(--card); font-size:14px; }
   .chips button:hover { border-color:var(--a1); }
   .chips button.on { background:linear-gradient(135deg,var(--a1),var(--a2)); color:#fff; border-color:transparent; font-weight:600; }
-  .ctl { display:grid; grid-template-columns:170px 1fr 84px; align-items:center; gap:12px; margin-top:16px; font-size:14px; }
-  .ctl output { text-align:right; color:var(--mut); font-variant-numeric:tabular-nums; }
+  .ctl { display:grid; grid-template-columns:44px 1fr 44px; grid-template-areas:"lb lb lb" "m r p"; align-items:center; gap:6px 12px; margin-top:18px; font-size:15px; }
+  .ctl label { grid-area:lb; padding-right:96px; }
+  .ctl output { grid-area:lb; justify-self:end; text-align:right; color:var(--tx); font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .ctl .mm { width:44px; height:44px; border-radius:50%; border:1px solid var(--line); background:var(--soft); color:var(--a1); font-size:24px; line-height:1; display:grid; place-items:center; padding:0; -webkit-tap-highlight-color:transparent; touch-action:manipulation; user-select:none; -webkit-user-select:none; }
+  .ctl .mm:active { background:var(--a1); color:#fff; }
+  .ctl .mm:disabled { opacity:.35; }
+  .ctl .mm.menos { grid-area:m; } .ctl .mm.mais { grid-area:p; }
+  /* trilha alta: o dedo acerta em qualquer ponto da barra, não só na bolinha */
+  .ctl input[type=range] { grid-area:r; height:44px; border-radius:0; touch-action:pan-y; -webkit-tap-highlight-color:transparent;
+    background:linear-gradient(90deg,var(--a1),var(--a2)) 0 50%/var(--p,0%) 8px no-repeat, linear-gradient(var(--line),var(--line)) 0 50%/100% 8px no-repeat; }
+  .ctl input[type=range]::-webkit-slider-thumb { width:30px; height:30px; }
+  .ctl input[type=range]::-moz-range-thumb { width:24px; height:24px; }
 
   @media (max-width:640px) {
-    .ctl { grid-template-columns:1fr 84px; gap:6px 12px; } .ctl label { grid-column:1/-1; }
     .banda { font-size:10px; } .banda input { height:110px; }
     .duo { grid-template-columns:1fr; gap:0; }
     .presets { gap:6px; } .presets button { font-size:13px; padding:10px 2px; }
@@ -223,11 +232,11 @@
 
   <section class="card trat">
     <h2><svg class="ic" viewBox="0 0 24 24"><path d="M3 12c2-6 4-6 6 0s4 6 6 0 4-6 6 0"/></svg>Tratamento de som</h2>
-    <div class="ctl"><label for="hpf">Corte de subgrave</label><input id="hpf" type="range" min="20" max="200" step="5" value="20"><output id="hpfv"></output></div>
-    <div class="ctl"><label for="grv">Reforço de graves</label><input id="grv" type="range" min="0" max="12" step="0.5" value="0"><output id="grvv"></output></div>
-    <div class="ctl"><label for="cmp">Compressor (nivela o volume)</label><input id="cmp" type="range" min="0" max="100" step="1" value="0"><output id="cmpv"></output></div>
-    <div class="ctl"><label for="lrg">Largura estéreo</label><input id="lrg" type="range" min="0" max="200" step="5" value="100"><output id="lrgv"></output></div>
-    <div class="ctl"><label for="bal">Balanço esquerda/direita</label><input id="bal" type="range" min="-100" max="100" step="5" value="0"><output id="balv"></output></div>
+    <div class="ctl"><label for="hpf">Corte de subgrave</label><input id="hpf" type="range" min="20" max="200" step="5" value="20"><button class="mm menos" type="button" aria-label="Diminuir">−</button><button class="mm mais" type="button" aria-label="Aumentar">+</button><output id="hpfv"></output></div>
+    <div class="ctl"><label for="grv">Reforço de graves</label><input id="grv" type="range" min="0" max="12" step="0.5" value="0"><button class="mm menos" type="button" aria-label="Diminuir">−</button><button class="mm mais" type="button" aria-label="Aumentar">+</button><output id="grvv"></output></div>
+    <div class="ctl"><label for="cmp">Compressor (nivela o volume)</label><input id="cmp" type="range" min="0" max="100" step="1" value="0"><button class="mm menos" type="button" aria-label="Diminuir">−</button><button class="mm mais" type="button" aria-label="Aumentar">+</button><output id="cmpv"></output></div>
+    <div class="ctl"><label for="lrg">Largura estéreo</label><input id="lrg" type="range" min="0" max="200" step="5" value="100"><button class="mm menos" type="button" aria-label="Diminuir">−</button><button class="mm mais" type="button" aria-label="Aumentar">+</button><output id="lrgv"></output></div>
+    <div class="ctl"><label for="bal">Balanço esquerda/direita</label><input id="bal" type="range" min="-100" max="100" step="5" value="0"><button class="mm menos" type="button" aria-label="Diminuir">−</button><button class="mm mais" type="button" aria-label="Aumentar">+</button><output id="balv"></output></div>
   </section>
 
   <section class="card nivel">
@@ -537,7 +546,47 @@ function ajusta(id, v) {
   if (v !== undefined) e.value = v;
   e.style.setProperty('--p', ((e.value - e.min) / (e.max - e.min) * 100) + '%');
   $(id + 'v').textContent = CTL[id](+e.value);
+  if (e._botoes) e._botoes();
   curvaAte = performance.now() + 400;
+}
+// controles fáceis no celular: toque em qualquer ponto da barra, arraste para os lados, ou use − e +
+const PASSO = { hpf: 10, grv: 1, cmp: 10, lrg: 10, bal: 10 };
+function facil(id) {
+  const e = $(id), lin = e.parentElement, mn = +e.min, mx = +e.max;
+  const menos = lin.querySelector('.menos'), mais = lin.querySelector('.mais');
+  const botoes = () => { menos.disabled = +e.value <= mn; mais.disabled = +e.value >= mx; };
+  const poe = v => { v = Math.round(v / +e.step) * +e.step; ajusta(id, Math.min(mx, Math.max(mn, v))); botoes(); };
+  const daX = x => { const r = e.getBoundingClientRect(), m = 15; return mn + Math.min(1, Math.max(0, (x - r.left - m) / (r.width - 2 * m))) * (mx - mn); };
+  e._botoes = botoes;
+  // segurar o − ou + repete
+  [[menos, -1], [mais, 1]].forEach(([b, s]) => {
+    let t1, t2;
+    const para = () => { clearTimeout(t1); clearInterval(t2); };
+    b.addEventListener('pointerdown', ev => {
+      ev.preventDefault(); para();
+      poe(+e.value + s * PASSO[id]);
+      t1 = setTimeout(() => { t2 = setInterval(() => poe(+e.value + s * PASSO[id]), 90); }, 400);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(n => b.addEventListener(n, para));
+    b.addEventListener('click', ev => { if (ev.detail === 0) poe(+e.value + s * PASSO[id]); });   // teclado
+  });
+  // toque/arraste na barra; movimento vertical continua rolando a página
+  let x0 = null, y0 = 0, arr = false;
+  e.addEventListener('pointerdown', ev => {
+    if (ev.pointerType === 'mouse') return;
+    x0 = ev.clientX; y0 = ev.clientY; arr = false;
+  });
+  e.addEventListener('pointermove', ev => {
+    if (x0 === null) return;
+    if (!arr && Math.abs(ev.clientX - x0) > 6 && Math.abs(ev.clientX - x0) > Math.abs(ev.clientY - y0)) { arr = true; try { e.setPointerCapture(ev.pointerId); } catch (_) {} }
+    if (arr) poe(daX(ev.clientX));
+  });
+  e.addEventListener('pointerup', ev => {
+    if (x0 !== null && !arr) poe(daX(ev.clientX));
+    x0 = null; arr = false;
+  });
+  e.addEventListener('pointercancel', () => { x0 = null; arr = false; });
+  botoes();
 }
 function eqInicia() {
   FREQS.forEach((f, i) => {
@@ -557,7 +606,7 @@ function eqInicia() {
     $('chips').append(b);
   });
   $('eqzero').addEventListener('click', () => { preset('Plano'); ajusta('hpf', 20); ajusta('grv', 0); ajusta('cmp', 0); ajusta('lrg', 100); ajusta('bal', 0); });
-  Object.keys(CTL).forEach(id => { $(id).addEventListener('input', () => ajusta(id)); ajusta(id); });
+  Object.keys(CTL).forEach(id => { $(id).addEventListener('input', () => ajusta(id)); ajusta(id); facil(id); });
   preset('Plano');
 }
 
