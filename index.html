@@ -233,7 +233,7 @@
     </div>
     <div class="ios">
       <h3>No iPhone (Safari)</h3>
-      <p>O iPhone não deixa uma página pegar o som de outra aba. Por isso o amplificador vai até o YouTube: um favorito especial abre um painel de volume em cima do vídeo, com até 300%.</p>
+      <p>O iPhone não deixa uma página pegar o som de outra aba. Por isso o amplificador vai até o YouTube: um favorito especial abre um painel de volume no topo da tela, com até 300%.</p>
       <ol>
         <li>Toque em <b>Copiar código</b> aqui embaixo.</li>
         <li>No Safari, toque em <b>Compartilhar</b> → <b>Adicionar Favorito</b>, mude o nome para <b>Amplificar</b> e salve.</li>
@@ -466,47 +466,54 @@ $('yt').addEventListener('click', async () => {
     $('ytmsg').textContent = 'Captura cancelada ou bloqueada pelo navegador.';
   }
 });
-/* favorito "Amplificar": roda dentro da página do YouTube e mostra um painel de volume (100% a 300%) */
+/* favorito "Amplificar": roda dentro da página do YouTube e mostra um painel de volume (100% a 300%).
+   Monta a tela só com createElement: o YouTube bloqueia innerHTML (Trusted Types). */
 function ampYT() {
-  var v = document.querySelector('video');
-  if (!v) { alert('Abra um vídeo do YouTube primeiro.'); return; }
-  var A = window.__amp;
-  if (!A || A.v !== v) {
-    var AC = window.AudioContext || window.webkitAudioContext;
-    var c = A && A.c || new AC();
-    var g = c.createGain(), l = c.createDynamicsCompressor();
-    l.threshold.value = -3; l.knee.value = 0; l.ratio.value = 20; l.attack.value = 0.002; l.release.value = 0.1;
-    c.createMediaElementSource(v).connect(g); g.connect(l); l.connect(c.destination);
-    A = window.__amp = { c: c, g: g, v: v };
-  }
-  A.c.resume();
-  var old = document.getElementById('__ampP'); if (old) old.remove();
-  var p = document.createElement('div'); p.id = '__ampP';
-  p.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2147483647;width:min(360px,calc(100vw - 32px));' +
-    'background:#181527;color:#f2effc;border-radius:18px;padding:14px 16px;box-shadow:0 10px 30px rgba(0,0,0,.45);font:15px/1.3 -apple-system,system-ui,sans-serif';
-  p.innerHTML = '<div style="display:flex;align-items:center;gap:10px"><b style="flex:1">🔊 Amplificador</b>' +
-    '<span id="__ampN" style="font-size:22px;font-weight:800"></span>' +
-    '<button id="__ampX" aria-label="Fechar" style="border:0;background:#2a2540;color:#fff;width:32px;height:32px;border-radius:50%;font-size:16px">✕</button></div>' +
-    '<input id="__ampR" type="range" min="100" max="300" step="5" style="width:100%;margin:12px 0;accent-color:#7a69ff">' +
-    '<div id="__ampB" style="display:flex;gap:6px"></div>';
-  document.body.appendChild(p);
-  var r = p.querySelector('#__ampR'), n = p.querySelector('#__ampN');
-  function set(x) {
-    x = Math.max(100, Math.min(300, +x)); r.value = x; n.textContent = x + '%';
-    A.g.gain.value = x / 100; A.c.resume();
-    try { localStorage.setItem('__ampV', x); } catch (e) {}
-  }
-  [100, 150, 200, 250, 300].forEach(function (x) {
-    var b = document.createElement('button'); b.textContent = x + '%';
-    b.style.cssText = 'flex:1;border:0;border-radius:10px;padding:9px 0;background:#2a2540;color:#fff;font:inherit;font-size:13px';
-    b.onclick = function () { set(x); };
-    p.querySelector('#__ampB').appendChild(b);
-  });
-  r.oninput = function () { set(r.value); };
-  p.querySelector('#__ampX').onclick = function () { p.remove(); };
-  var s = A.g.gain.value > 1 ? Math.round(A.g.gain.value * 100) : 200;
-  try { s = +localStorage.getItem('__ampV') || s; } catch (e) {}
-  set(s);
+  try {
+    var v = document.querySelector('video');
+    if (!v) { alert('Abra um vídeo do YouTube primeiro.'); return; }
+    var A = window.__amp;
+    if (!A || A.v !== v) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      var c = A && A.c || new AC();
+      var g = c.createGain(), l = c.createDynamicsCompressor();
+      l.threshold.value = -3; l.knee.value = 0; l.ratio.value = 20; l.attack.value = 0.002; l.release.value = 0.1;
+      c.createMediaElementSource(v).connect(g); g.connect(l); l.connect(c.destination);
+      A = window.__amp = { c: c, g: g, v: v };
+    }
+    A.c.resume();
+    var old = document.getElementById('__ampP'); if (old) old.remove();
+    var el = function (tag, css, txt) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (txt) e.textContent = txt; return e; };
+    var p = el('div', 'position:fixed;left:50%;top:max(12px,env(safe-area-inset-top));transform:translateX(-50%);z-index:2147483647;' +
+      'width:min(360px,calc(100vw - 24px));box-sizing:border-box;background:#181527;color:#f2effc;border-radius:18px;padding:14px 16px;' +
+      'box-shadow:0 10px 30px rgba(0,0,0,.5);font:15px/1.3 -apple-system,system-ui,sans-serif');
+    p.id = '__ampP';
+    var topo = el('div', 'display:flex;align-items:center;gap:10px');
+    var n = el('span', 'font-size:22px;font-weight:800');
+    var x = el('button', 'border:0;background:#2a2540;color:#fff;width:34px;height:34px;border-radius:50%;font-size:16px;padding:0', '✕');
+    x.setAttribute('aria-label', 'Fechar');
+    topo.appendChild(el('b', 'flex:1', '🔊 Amplificador')); topo.appendChild(n); topo.appendChild(x);
+    var r = el('input', 'width:100%;margin:12px 0;accent-color:#7a69ff');
+    r.type = 'range'; r.min = 100; r.max = 300; r.step = 5;
+    var bs = el('div', 'display:flex;gap:6px');
+    p.appendChild(topo); p.appendChild(r); p.appendChild(bs);
+    var set = function (q) {
+      q = Math.max(100, Math.min(300, +q)); r.value = q; n.textContent = q + '%';
+      A.g.gain.value = q / 100; A.c.resume();
+      try { localStorage.setItem('__ampV', q); } catch (e) {}
+    };
+    [100, 150, 200, 250, 300].forEach(function (q) {
+      var b = el('button', 'flex:1;border:0;border-radius:10px;padding:10px 0;background:#2a2540;color:#fff;font:inherit;font-size:13px', q + '%');
+      b.onclick = function () { set(q); };
+      bs.appendChild(b);
+    });
+    r.oninput = function () { set(r.value); };
+    x.onclick = function () { p.remove(); };
+    document.documentElement.appendChild(p);
+    var s0 = A.g.gain.value > 1 ? Math.round(A.g.gain.value * 100) : 200;
+    try { s0 = +localStorage.getItem('__ampV') || s0; } catch (e) {}
+    set(s0);
+  } catch (e) { alert('Amplificador não conseguiu abrir: ' + e.message); }
 }
 const AMP_URL = 'javascript:' + encodeURIComponent('(' + ampYT.toString() + ')()');
 $('fav').href = AMP_URL;
