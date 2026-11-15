@@ -473,13 +473,23 @@ function ampYT() {
     var v = document.querySelector('video');
     if (!v) { alert('Abra um vídeo do YouTube primeiro.'); return; }
     var A = window.__amp;
+    if (A && A.v === v && !A.an) { alert('Recarregue a página do YouTube e toque em Amplificar de novo.'); return; }
     if (!A || A.v !== v) {
       var AC = window.AudioContext || window.webkitAudioContext;
       var c = A && A.c || new AC();
-      var g = c.createGain(), l = c.createDynamicsCompressor();
-      l.threshold.value = -3; l.knee.value = 0; l.ratio.value = 20; l.attack.value = 0.002; l.release.value = 0.1;
-      c.createMediaElementSource(v).connect(g); g.connect(l); l.connect(c.destination);
-      A = window.__amp = { c: c, g: g, v: v };
+      // vídeo -> ganho -> saturador suave -> medidor -> alto-falante.
+      // Música do YouTube já vem perto do máximo digital: um limitador comum só "segura" o aumento.
+      // O saturador deixa o som linear até 70% e arredonda os picos, então o volume sobe de verdade sem estalar.
+      var g = c.createGain(), sh = c.createWaveShaper(), an = c.createAnalyser(), N = 4096, cv = new Float32Array(N), k;
+      for (k = 0; k < N; k++) {
+        var u = (k / (N - 1) * 2 - 1) * 4, au = Math.abs(u);
+        cv[k] = (u < 0 ? -1 : 1) * (au < 0.7 ? au : 0.7 + 0.28 * Math.tanh((au - 0.7) / 0.28));
+      }
+      var pre = c.createGain(); pre.gain.value = 0.25;   // a curva cobre de -4 a +4
+      sh.curve = cv; sh.oversample = '4x';
+      an.fftSize = 1024;
+      c.createMediaElementSource(v).connect(g); g.connect(pre); pre.connect(sh); sh.connect(an); an.connect(c.destination);
+      A = window.__amp = { c: c, g: g, an: an, out: an, v: v };
     }
     A.c.resume();
     var old = document.getElementById('__ampP'); if (old) old.remove();
@@ -496,7 +506,29 @@ function ampYT() {
     var r = el('input', 'width:100%;margin:12px 0;accent-color:#7a69ff');
     r.type = 'range'; r.min = 100; r.max = 300; r.step = 5;
     var bs = el('div', 'display:flex;gap:6px');
-    p.appendChild(topo); p.appendChild(r); p.appendChild(bs);
+    var med = el('div', 'height:6px;border-radius:3px;background:#2a2540;margin-top:12px;overflow:hidden');
+    var barra = el('div', 'height:100%;width:0;background:linear-gradient(90deg,#3ddc84,#f5b942 80%,#ff6b6b)');
+    med.appendChild(barra);
+    var st = el('div', 'font-size:13px;margin-top:8px;color:#a09bb8');
+    var at = el('button', 'display:none;width:100%;margin-top:10px;border:0;border-radius:10px;padding:11px 0;background:#7a69ff;color:#fff;font:inherit;font-weight:700', 'Ativar amplificador');
+    at.onclick = function () { A.c.resume(); if (v.paused) v.play(); };
+    p.appendChild(topo); p.appendChild(r); p.appendChild(bs); p.appendChild(med); p.appendChild(st); p.appendChild(at);
+    var buf = new Float32Array(A.an.fftSize), mudo = 0;
+    var laco = function () {
+      if (!p.isConnected) return;
+      A.an.getFloatTimeDomainData(buf);
+      var pk = 0; for (var i = 0; i < buf.length; i++) { var a = Math.abs(buf[i]); if (a > pk) pk = a; }
+      barra.style.width = Math.min(100, pk * 100) + '%';
+      var m, cor = '#a09bb8', btn = false;
+      if (A.c.state !== 'running') { m = 'Amplificador pausado pelo iPhone. Toque no botão abaixo.'; cor = '#f5b942'; btn = true; }
+      else if (v.paused) { m = 'Dê play no vídeo.'; mudo = 0; }
+      else if (pk > 0.002) { m = '✓ O som está passando pelo amplificador.'; cor = '#3ddc84'; mudo = 0; }
+      else if (++mudo > 90) { m = '✗ O som não está chegando ao amplificador. Recarregue a página e tente de novo.'; cor = '#ff6b6b'; }
+      else m = 'Verificando o som…';
+      if (st.textContent !== m) { st.textContent = m; st.style.color = cor; }
+      at.style.display = btn ? 'block' : 'none';
+      requestAnimationFrame(laco);
+    };
     var set = function (q) {
       q = Math.max(100, Math.min(300, +q)); r.value = q; n.textContent = q + '%';
       A.g.gain.value = q / 100; A.c.resume();
@@ -510,6 +542,7 @@ function ampYT() {
     r.oninput = function () { set(r.value); };
     x.onclick = function () { p.remove(); };
     document.documentElement.appendChild(p);
+    laco();
     var s0 = A.g.gain.value > 1 ? Math.round(A.g.gain.value * 100) : 200;
     try { s0 = +localStorage.getItem('__ampV') || s0; } catch (e) {}
     set(s0);
